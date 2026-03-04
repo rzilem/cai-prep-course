@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   BookOpen,
@@ -19,7 +19,9 @@ import {
   GraduationCap,
 } from 'lucide-react'
 import { motion } from 'motion/react'
+import type { LucideIcon } from 'lucide-react'
 
+import { createClient } from '@/lib/supabase/client'
 import { FadeIn } from '@/components/fade-in'
 import {
   Card,
@@ -32,17 +34,43 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ---------------------------------------------------------------------------
-// Mock Course Data
+// Types
 // ---------------------------------------------------------------------------
 
-interface MockCourse {
+interface ApiCourse {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  credential_code: string
+  difficulty: string
+  estimated_hours: number
+  module_count: number
+  lesson_count: number
+  icon_name: string | null
+  color_primary: string | null
+  prerequisites: string[] | null
+  sort_order: number
+}
+
+interface ProgressRecord {
+  course_id: string
+  module_id: string | null
+  lesson_id: string | null
+  status: string
+  progress_percent: number | null
+}
+
+interface DisplayCourse {
+  id: string
   slug: string
   code: string
   title: string
   description: string
-  difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert'
+  difficulty: string
   estimatedHours: number
   moduleCount: number
   lessonCount: number
@@ -51,156 +79,14 @@ interface MockCourse {
   progress: number
   color: string
   colorAccent: string
-  icon: typeof BookOpen
+  icon: LucideIcon
   locked: boolean
+  completedLessons: number
 }
 
-const mockCourses: MockCourse[] = [
-  {
-    slug: 'cmca',
-    code: 'CMCA',
-    title: 'Certified Manager of Community Associations',
-    description:
-      'Foundation credential covering financial management, governance, facilities, and community relations.',
-    difficulty: 'intermediate',
-    estimatedHours: 60,
-    moduleCount: 7,
-    lessonCount: 35,
-    prerequisites: [],
-    enrolled: true,
-    progress: 45,
-    color: 'bg-cai-blue',
-    colorAccent: 'border-cai-blue/30',
-    icon: GraduationCap,
-    locked: false,
-  },
-  {
-    slug: 'ams',
-    code: 'AMS',
-    title: 'Association Management Specialist',
-    description:
-      'Advanced management practices including strategic planning, risk management, and leadership.',
-    difficulty: 'advanced',
-    estimatedHours: 45,
-    moduleCount: 6,
-    lessonCount: 28,
-    prerequisites: ['CMCA'],
-    enrolled: true,
-    progress: 12,
-    color: 'bg-cai-teal',
-    colorAccent: 'border-cai-teal/30',
-    icon: Award,
-    locked: false,
-  },
-  {
-    slug: 'pcam',
-    code: 'PCAM',
-    title: 'Professional Community Association Manager',
-    description:
-      'The highest individual manager credential, covering executive-level management and case studies.',
-    difficulty: 'expert',
-    estimatedHours: 80,
-    moduleCount: 8,
-    lessonCount: 40,
-    prerequisites: ['AMS'],
-    enrolled: false,
-    progress: 0,
-    color: 'bg-cai-purple',
-    colorAccent: 'border-cai-purple/30',
-    icon: Shield,
-    locked: true,
-  },
-  {
-    slug: 'lsm',
-    code: 'LSM',
-    title: 'Large-Scale Manager',
-    description:
-      'Specialized training for managing large-scale communities with 1,000+ units and complex operations.',
-    difficulty: 'advanced',
-    estimatedHours: 40,
-    moduleCount: 5,
-    lessonCount: 22,
-    prerequisites: ['CMCA'],
-    enrolled: false,
-    progress: 0,
-    color: 'bg-cai-amber',
-    colorAccent: 'border-cai-amber/30',
-    icon: Building2,
-    locked: false,
-  },
-  {
-    slug: 'rs',
-    code: 'RS',
-    title: 'Reserve Specialist',
-    description:
-      'Reserve fund planning, analysis, and reporting for community association financial health.',
-    difficulty: 'intermediate',
-    estimatedHours: 35,
-    moduleCount: 4,
-    lessonCount: 20,
-    prerequisites: [],
-    enrolled: false,
-    progress: 0,
-    color: 'bg-cai-gold',
-    colorAccent: 'border-cai-gold/30',
-    icon: BadgeDollarSign,
-    locked: false,
-  },
-  {
-    slug: 'cirms',
-    code: 'CIRMS',
-    title: 'Community Insurance & Risk Management Specialist',
-    description:
-      'Insurance coverage, risk assessment, and claims management for community associations.',
-    difficulty: 'intermediate',
-    estimatedHours: 30,
-    moduleCount: 5,
-    lessonCount: 18,
-    prerequisites: [],
-    enrolled: false,
-    progress: 0,
-    color: 'bg-cai-red',
-    colorAccent: 'border-cai-red/30',
-    icon: Scale,
-    locked: false,
-  },
-  {
-    slug: 'board-leader',
-    code: 'BOARD',
-    title: 'Board Leadership Certificate',
-    description:
-      'Essential training for HOA board members and volunteer leaders on governance and fiduciary duties.',
-    difficulty: 'beginner',
-    estimatedHours: 20,
-    moduleCount: 4,
-    lessonCount: 16,
-    prerequisites: [],
-    enrolled: true,
-    progress: 33,
-    color: 'bg-cai-emerald',
-    colorAccent: 'border-cai-emerald/30',
-    icon: Users,
-    locked: false,
-  },
-  {
-    slug: 'texas-law',
-    code: 'TX_LAW',
-    title: 'Texas HOA Law Essentials',
-    description:
-      'Texas Property Code Ch. 209, deed restrictions, foreclosure rules, and state-specific compliance.',
-    difficulty: 'intermediate',
-    estimatedHours: 25,
-    moduleCount: 5,
-    lessonCount: 15,
-    prerequisites: [],
-    enrolled: true,
-    progress: 78,
-    color: 'bg-cai-red',
-    colorAccent: 'border-cai-red/30',
-    icon: Gavel,
-    locked: false,
-  },
-]
+// ---------------------------------------------------------------------------
+// Static maps
+// ---------------------------------------------------------------------------
 
 const difficultyColors: Record<string, string> = {
   beginner: 'bg-cai-emerald/15 text-cai-emerald border-cai-emerald/30',
@@ -209,11 +95,47 @@ const difficultyColors: Record<string, string> = {
   expert: 'bg-cai-purple/15 text-cai-purple border-cai-purple/30',
 }
 
+const CODE_COLORS: Record<string, { color: string; colorAccent: string }> = {
+  CMCA: { color: 'bg-cai-blue', colorAccent: 'border-cai-blue/30' },
+  AMS: { color: 'bg-cai-teal', colorAccent: 'border-cai-teal/30' },
+  PCAM: { color: 'bg-cai-purple', colorAccent: 'border-cai-purple/30' },
+  LSM: { color: 'bg-cai-amber', colorAccent: 'border-cai-amber/30' },
+  RS: { color: 'bg-cai-gold', colorAccent: 'border-cai-gold/30' },
+  CIRMS: { color: 'bg-cai-red', colorAccent: 'border-cai-red/30' },
+  BOARD: { color: 'bg-cai-emerald', colorAccent: 'border-cai-emerald/30' },
+  TX_LAW: { color: 'bg-cai-red', colorAccent: 'border-cai-red/30' },
+}
+
+const CODE_ICONS: Record<string, LucideIcon> = {
+  CMCA: GraduationCap,
+  AMS: Award,
+  PCAM: Shield,
+  LSM: Building2,
+  RS: BadgeDollarSign,
+  CIRMS: Scale,
+  BOARD: Users,
+  TX_LAW: Gavel,
+}
+
+function colorsForCode(code: string) {
+  return CODE_COLORS[code] ?? { color: 'bg-cai-blue', colorAccent: 'border-cai-blue/30' }
+}
+
+function iconForCode(code: string): LucideIcon {
+  return CODE_ICONS[code] ?? BookOpen
+}
+
 // ---------------------------------------------------------------------------
 // Course Card
 // ---------------------------------------------------------------------------
 
-function CourseCard({ course, index }: { course: MockCourse; index: number }) {
+function CourseCard({
+  course,
+  index,
+}: {
+  course: DisplayCourse
+  index: number
+}) {
   return (
     <FadeIn delay={index * 80} className="h-full">
       <motion.div
@@ -260,7 +182,7 @@ function CourseCard({ course, index }: { course: MockCourse; index: number }) {
               </div>
               <Badge
                 variant="outline"
-                className={difficultyColors[course.difficulty]}
+                className={difficultyColors[course.difficulty] ?? ''}
               >
                 {course.difficulty}
               </Badge>
@@ -354,13 +276,127 @@ function CourseCard({ course, index }: { course: MockCourse; index: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// Loading Skeleton Grid
+// ---------------------------------------------------------------------------
+
+function CourseGridSkeleton() {
+  return (
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+        <Skeleton key={i} className="h-72 w-full rounded-xl" />
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Course Catalog Page
 // ---------------------------------------------------------------------------
 
 export default function CourseCatalogPage() {
   const [filter, setFilter] = useState<'all' | 'enrolled' | 'available'>('all')
+  const [loading, setLoading] = useState(true)
+  const [courses, setCourses] = useState<DisplayCourse[]>([])
 
-  const filteredCourses = mockCourses.filter((c) => {
+  useEffect(() => {
+    async function load() {
+      try {
+        // Get signed-in user
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        const email = user?.email ?? null
+
+        // Fetch courses and progress in parallel
+        const [coursesRes, progressRes] = await Promise.all([
+          fetch('/api/courses'),
+          email
+            ? fetch(`/api/progress?user_email=${encodeURIComponent(email)}`)
+            : Promise.resolve(null),
+        ])
+
+        const apiCourses: ApiCourse[] = coursesRes.ok
+          ? await coursesRes.json()
+          : []
+
+        const progressRecords: ProgressRecord[] =
+          progressRes && progressRes.ok
+            ? (await progressRes.json()).progress ?? []
+            : []
+
+        // Build a Set of credential_codes that the user has completed (all
+        // lessons done) so we can determine lock status for prerequisites.
+        const completedCourseCodes = new Set<string>()
+        for (const course of apiCourses) {
+          const courseProgress = progressRecords.filter(
+            (r) => r.course_id === course.id
+          )
+          const completedLessons = courseProgress.filter(
+            (r) => r.status === 'completed' && r.lesson_id
+          ).length
+          if (
+            course.lesson_count > 0 &&
+            completedLessons >= course.lesson_count
+          ) {
+            completedCourseCodes.add(course.credential_code)
+          }
+        }
+
+        const display: DisplayCourse[] = apiCourses.map((course) => {
+          const courseProgress = progressRecords.filter(
+            (r) => r.course_id === course.id
+          )
+          const completedLessons = courseProgress.filter(
+            (r) => r.status === 'completed' && r.lesson_id
+          ).length
+          const enrolled = courseProgress.length > 0
+          const totalLessons = course.lesson_count || 1
+          const progressPct = Math.round((completedLessons / totalLessons) * 100)
+
+          const prerequisites: string[] = Array.isArray(course.prerequisites)
+            ? course.prerequisites
+            : []
+
+          const locked =
+            prerequisites.length > 0 &&
+            !prerequisites.every((pre) => completedCourseCodes.has(pre))
+
+          const { color, colorAccent } = colorsForCode(course.credential_code)
+
+          return {
+            id: course.id,
+            slug: course.slug,
+            code: course.credential_code,
+            title: course.title,
+            description: course.description ?? '',
+            difficulty: course.difficulty,
+            estimatedHours: course.estimated_hours,
+            moduleCount: course.module_count,
+            lessonCount: course.lesson_count,
+            prerequisites,
+            enrolled,
+            progress: progressPct,
+            color,
+            colorAccent,
+            icon: iconForCode(course.credential_code),
+            locked,
+            completedLessons,
+          }
+        })
+
+        setCourses(display)
+      } catch (err) {
+        console.error('[CourseCatalog] load error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [])
+
+  const filteredCourses = courses.filter((c) => {
     if (filter === 'enrolled') return c.enrolled
     if (filter === 'available') return !c.locked
     return true
@@ -402,14 +438,18 @@ export default function CourseCatalogPage() {
       </FadeIn>
 
       {/* Course Grid */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredCourses.map((course, i) => (
-          <CourseCard key={course.slug} course={course} index={i} />
-        ))}
-      </div>
+      {loading ? (
+        <CourseGridSkeleton />
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredCourses.map((course, i) => (
+            <CourseCard key={course.id} course={course} index={i} />
+          ))}
+        </div>
+      )}
 
       {/* Empty State */}
-      {filteredCourses.length === 0 && (
+      {!loading && filteredCourses.length === 0 && (
         <FadeIn delay={0}>
           <div className="flex flex-col items-center gap-4 py-16 text-center">
             <BookOpen className="size-12 text-muted-foreground" />

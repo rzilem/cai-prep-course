@@ -1,46 +1,101 @@
 'use client'
 
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { GraduationCap, Mail, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { GraduationCap, AlertCircle } from 'lucide-react'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
+function getAuthClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+function LoginContent() {
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
-  const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [exchanging, setExchanging] = useState(false)
 
-  const isValidEmail = email.endsWith('@psprop.net') && email.length > '@psprop.net'.length
+  useEffect(() => {
+    const supabase = getAuthClient()
+    const hash = window.location.hash
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
+    // Case 1: Implicit flow — tokens in URL hash (#access_token=...)
+    if (hash.includes('access_token')) {
+      setExchanging(true)
+      const params = new URLSearchParams(hash.substring(1))
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
 
-    if (!isValidEmail) {
-      setError('Only @psprop.net email addresses are allowed')
+      if (access_token) {
+        supabase.auth
+          .setSession({
+            access_token,
+            refresh_token: refresh_token || '',
+          })
+          .then(({ error: sessionError }) => {
+            if (sessionError) {
+              setError('Sign-in failed: ' + sessionError.message)
+              setExchanging(false)
+            } else {
+              window.location.href = '/'
+            }
+          })
+      }
       return
     }
 
+    // Case 2: PKCE flow — code in query string (?code=...)
+    const code = searchParams.get('code')
+    if (code) {
+      setExchanging(true)
+      supabase.auth.exchangeCodeForSession(code).then(({ error: exchangeError }) => {
+        if (exchangeError) {
+          setError('Sign-in failed: ' + exchangeError.message)
+          setExchanging(false)
+        } else {
+          window.location.href = '/'
+        }
+      })
+      return
+    }
+
+    // Case 3: Already signed in — redirect to dashboard
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        window.location.href = '/'
+      }
+    })
+
+    // Show URL errors
+    const urlError = searchParams.get('error')
+    if (urlError === 'auth_failed') {
+      setError('Sign-in failed. Please try again.')
+    }
+  }, [searchParams])
+
+  async function handleMicrosoftLogin() {
+    setError(null)
     setLoading(true)
 
     try {
-      const supabase = createClient()
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email,
+      const supabase = getAuthClient()
+      const { error: authError } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          scopes: 'email profile',
+          redirectTo: `${window.location.origin}/login`,
         },
       })
 
       if (authError) {
         setError(authError.message)
-        return
+        setLoading(false)
       }
-
-      setSent(true)
     } catch {
       setError('An unexpected error occurred. Please try again.')
-    } finally {
       setLoading(false)
     }
   }
@@ -48,9 +103,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 px-4">
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-          {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-8 py-10 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-2xl mb-4 backdrop-blur-sm">
               <GraduationCap className="w-8 h-8 text-white" />
@@ -63,101 +116,67 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Body */}
           <div className="px-8 py-8">
-            {sent ? (
-              /* Success state */
-              <div className="text-center py-4">
-                <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-50 rounded-full mb-4">
-                  <CheckCircle className="w-7 h-7 text-emerald-600" />
+            <div className="text-center space-y-5">
+              {exchanging ? (
+                <div className="py-4">
+                  <span className="inline-block w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+                  <p className="text-sm font-medium text-slate-700">Signing you in...</p>
                 </div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">
-                  Check your email!
-                </h2>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  We sent a magic link to{' '}
-                  <span className="font-medium text-slate-700">{email}</span>.
-                  <br />
-                  Click the link in the email to sign in.
-                </p>
-                <button
-                  onClick={() => {
-                    setSent(false)
-                    setEmail('')
-                  }}
-                  className="mt-6 text-sm text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Use a different email
-                </button>
-              </div>
-            ) : (
-              /* Login form */
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="block text-sm font-medium text-slate-700 mb-1.5"
-                  >
-                    Work Email
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value)
-                        setError(null)
-                      }}
-                      placeholder="yourname@psprop.net"
-                      autoComplete="email"
-                      required
-                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors"
-                    />
-                  </div>
-                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600">
+                    Sign in with your PS Property Management account
+                  </p>
 
-                {error && (
-                  <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3">
-                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading || !isValidEmail}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-                >
-                  {loading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      Send Magic Link
-                      <ArrowRight className="w-4 h-4" />
-                    </>
+                  {error && (
+                    <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3 text-left">
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>{error}</span>
+                    </div>
                   )}
-                </button>
 
-                <p className="text-xs text-center text-slate-400 mt-4">
-                  Only <span className="font-medium">@psprop.net</span> email addresses are allowed.
-                  <br />
-                  Contact your manager if you need access.
-                </p>
-              </form>
-            )}
+                  <button
+                    onClick={handleMicrosoftLogin}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-3 bg-[#2F2F2F] hover:bg-[#1a1a1a] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg text-sm transition-colors"
+                  >
+                    {loading ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                        <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                        <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                        <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                      </svg>
+                    )}
+                    {loading ? 'Redirecting...' : 'Sign in with Microsoft'}
+                  </button>
+
+                  <p className="text-xs text-slate-400">
+                    Only <span className="font-medium">@psprop.net</span> accounts are allowed.
+                    <br />
+                    Contact your manager if you need access.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-xs text-slate-400 mt-6">
           Serving Central Texas communities since 1987
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   )
 }

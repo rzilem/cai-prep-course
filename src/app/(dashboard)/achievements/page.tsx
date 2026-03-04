@@ -1,45 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Trophy,
-  Star,
   Lock,
   Flame,
-  BookOpen,
-  Target,
-  Zap,
-  Award,
-  Crown,
-  Clock,
-  Shield,
+  Star,
   CheckCircle2,
-  GraduationCap,
-  Brain,
-  Layers,
   BarChart3,
-  Sparkles,
-  Medal,
-  Rocket,
-  Heart,
+  Loader2,
 } from 'lucide-react'
 import { motion } from 'motion/react'
+import { createClient } from '@/lib/supabase/client'
 
 import { FadeIn } from '@/components/fade-in'
 import { AnimatedCounter } from '@/components/animated-counter'
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 
 // ---------------------------------------------------------------------------
-// Types & Data
+// Types
 // ---------------------------------------------------------------------------
 
 type AchievementCategory =
@@ -51,19 +36,21 @@ type AchievementCategory =
 
 type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
-interface MockAchievement {
+interface Achievement {
   id: string
+  slug: string
   title: string
   description: string
-  icon: typeof Trophy
-  xpReward: number
+  icon: string
+  xp_reward: number
   rarity: AchievementRarity
-  category: AchievementCategory
-  earned: boolean
-  earnedAt?: string
-  progressCurrent?: number
-  progressTotal?: number
+  category: string
+  earned_at: string | null
 }
+
+// ---------------------------------------------------------------------------
+// Rarity Colors
+// ---------------------------------------------------------------------------
 
 const rarityColors: Record<AchievementRarity, { border: string; bg: string; glow: string; text: string; badge: string }> = {
   common: {
@@ -103,250 +90,6 @@ const rarityColors: Record<AchievementRarity, { border: string; bg: string; glow
   },
 }
 
-const mockAchievements: MockAchievement[] = [
-  // Completion
-  {
-    id: 'first-lesson',
-    title: 'First Steps',
-    description: 'Complete your first lesson',
-    icon: BookOpen,
-    xpReward: 50,
-    rarity: 'common',
-    category: 'completion',
-    earned: true,
-    earnedAt: '2026-02-15',
-  },
-  {
-    id: 'module-complete',
-    title: 'Module Master',
-    description: 'Complete an entire module',
-    icon: CheckCircle2,
-    xpReward: 200,
-    rarity: 'uncommon',
-    category: 'completion',
-    earned: true,
-    earnedAt: '2026-02-20',
-  },
-  {
-    id: 'course-complete',
-    title: 'Graduation Day',
-    description: 'Complete an entire course',
-    icon: GraduationCap,
-    xpReward: 1000,
-    rarity: 'epic',
-    category: 'completion',
-    earned: false,
-    progressCurrent: 45,
-    progressTotal: 100,
-  },
-  {
-    id: 'all-courses',
-    title: 'Grand Master',
-    description: 'Complete all available courses',
-    icon: Crown,
-    xpReward: 5000,
-    rarity: 'legendary',
-    category: 'completion',
-    earned: false,
-    progressCurrent: 0,
-    progressTotal: 8,
-  },
-  // Score
-  {
-    id: 'first-quiz',
-    title: 'Quiz Taker',
-    description: 'Complete your first quiz',
-    icon: HelpCircle,
-    xpReward: 50,
-    rarity: 'common',
-    category: 'score',
-    earned: true,
-    earnedAt: '2026-02-16',
-  },
-  {
-    id: 'perfect-quiz',
-    title: 'Perfect Score',
-    description: 'Score 100% on any quiz',
-    icon: Star,
-    xpReward: 250,
-    rarity: 'rare',
-    category: 'score',
-    earned: true,
-    earnedAt: '2026-02-18',
-  },
-  {
-    id: 'quiz-streak-5',
-    title: 'On a Roll',
-    description: 'Pass 5 quizzes in a row',
-    icon: Zap,
-    xpReward: 300,
-    rarity: 'uncommon',
-    category: 'score',
-    earned: true,
-    earnedAt: '2026-02-22',
-  },
-  {
-    id: 'exam-ready',
-    title: 'Exam Ready',
-    description: 'Score 80%+ on a full practice exam',
-    icon: Shield,
-    xpReward: 500,
-    rarity: 'epic',
-    category: 'score',
-    earned: false,
-  },
-  {
-    id: 'top-scorer',
-    title: 'Top of Class',
-    description: 'Score 95%+ on a practice exam',
-    icon: Award,
-    xpReward: 1000,
-    rarity: 'legendary',
-    category: 'score',
-    earned: false,
-  },
-  // Streak
-  {
-    id: 'streak-3',
-    title: 'Getting Started',
-    description: 'Maintain a 3-day study streak',
-    icon: Flame,
-    xpReward: 75,
-    rarity: 'common',
-    category: 'streak',
-    earned: true,
-    earnedAt: '2026-02-17',
-  },
-  {
-    id: 'streak-7',
-    title: 'Week Warrior',
-    description: 'Maintain a 7-day study streak',
-    icon: Flame,
-    xpReward: 200,
-    rarity: 'uncommon',
-    category: 'streak',
-    earned: true,
-    earnedAt: '2026-02-21',
-  },
-  {
-    id: 'streak-14',
-    title: 'Two Week Champion',
-    description: 'Maintain a 14-day study streak',
-    icon: Flame,
-    xpReward: 500,
-    rarity: 'rare',
-    category: 'streak',
-    earned: false,
-    progressCurrent: 12,
-    progressTotal: 14,
-  },
-  {
-    id: 'streak-30',
-    title: 'Monthly Legend',
-    description: 'Maintain a 30-day study streak',
-    icon: Flame,
-    xpReward: 1000,
-    rarity: 'epic',
-    category: 'streak',
-    earned: false,
-    progressCurrent: 12,
-    progressTotal: 30,
-  },
-  // Milestone
-  {
-    id: 'xp-1000',
-    title: 'Thousand Club',
-    description: 'Earn 1,000 XP total',
-    icon: Sparkles,
-    xpReward: 100,
-    rarity: 'common',
-    category: 'milestone',
-    earned: true,
-    earnedAt: '2026-02-19',
-  },
-  {
-    id: 'xp-5000',
-    title: 'XP Powerhouse',
-    description: 'Earn 5,000 XP total',
-    icon: Rocket,
-    xpReward: 500,
-    rarity: 'rare',
-    category: 'milestone',
-    earned: false,
-    progressCurrent: 4750,
-    progressTotal: 5000,
-  },
-  {
-    id: 'flashcard-100',
-    title: 'Card Shark',
-    description: 'Review 100 flashcards',
-    icon: Layers,
-    xpReward: 150,
-    rarity: 'uncommon',
-    category: 'milestone',
-    earned: true,
-    earnedAt: '2026-02-24',
-  },
-  {
-    id: 'flashcard-500',
-    title: 'Memory Master',
-    description: 'Review 500 flashcards',
-    icon: Brain,
-    xpReward: 400,
-    rarity: 'rare',
-    category: 'milestone',
-    earned: false,
-    progressCurrent: 287,
-    progressTotal: 500,
-  },
-  {
-    id: 'study-10h',
-    title: 'Dedicated Learner',
-    description: 'Log 10 hours of study time',
-    icon: Clock,
-    xpReward: 200,
-    rarity: 'uncommon',
-    category: 'milestone',
-    earned: true,
-    earnedAt: '2026-02-23',
-  },
-  {
-    id: 'study-50h',
-    title: 'Scholar',
-    description: 'Log 50 hours of study time',
-    icon: Target,
-    xpReward: 750,
-    rarity: 'epic',
-    category: 'milestone',
-    earned: false,
-    progressCurrent: 23,
-    progressTotal: 50,
-  },
-  {
-    id: 'texas-law',
-    title: 'Texas Tough',
-    description: 'Complete all Texas Law callout reviews',
-    icon: Medal,
-    xpReward: 300,
-    rarity: 'rare',
-    category: 'milestone',
-    earned: false,
-    progressCurrent: 8,
-    progressTotal: 25,
-  },
-]
-
-// Workaround for the HelpCircle import (used in quiz category)
-import { HelpCircle } from 'lucide-react'
-
-const mockUserStats = {
-  totalXP: 4750,
-  level: 4,
-  xpToNextLevel: 250, // 5000 - 4750
-  totalEarned: mockAchievements.filter((a) => a.earned).length,
-  totalAvailable: mockAchievements.length,
-}
-
 // ---------------------------------------------------------------------------
 // Achievement Card
 // ---------------------------------------------------------------------------
@@ -355,20 +98,21 @@ function AchievementCard({
   achievement,
   index,
 }: {
-  achievement: MockAchievement
+  achievement: Achievement
   index: number
 }) {
-  const rarity = rarityColors[achievement.rarity]
+  const rarity = rarityColors[achievement.rarity] ?? rarityColors.common
+  const earned = achievement.earned_at !== null
 
   return (
     <FadeIn delay={index * 60}>
       <motion.div
-        whileHover={achievement.earned ? { scale: 1.03, y: -2 } : {}}
+        whileHover={earned ? { scale: 1.03, y: -2 } : {}}
         transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       >
         <Card
           className={`relative overflow-hidden transition-shadow ${
-            achievement.earned
+            earned
               ? `${rarity.border} ${rarity.bg} hover:shadow-lg ${rarity.glow}`
               : 'opacity-50 grayscale'
           }`}
@@ -376,7 +120,7 @@ function AchievementCard({
           {/* Rarity accent strip */}
           <div
             className={`absolute top-0 left-0 right-0 h-0.5 ${
-              achievement.earned
+              earned
                 ? rarity.text.replace('text-', 'bg-')
                 : 'bg-muted'
             }`}
@@ -387,20 +131,18 @@ function AchievementCard({
             <div className="relative">
               <div
                 className={`flex size-14 items-center justify-center rounded-full ${
-                  achievement.earned
+                  earned
                     ? `${rarity.text.replace('text-', 'bg-')}/15`
                     : 'bg-muted'
                 }`}
               >
-                {achievement.earned ? (
-                  <achievement.icon
-                    className={`size-7 ${rarity.text}`}
-                  />
+                {earned ? (
+                  <span className="text-2xl">{achievement.icon}</span>
                 ) : (
                   <Lock className="size-6 text-muted-foreground" />
                 )}
               </div>
-              {achievement.earned && (
+              {earned && (
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -433,35 +175,15 @@ function AchievementCard({
                 {achievement.rarity}
               </Badge>
               <span className="text-xs font-medium text-cai-gold">
-                +{achievement.xpReward} XP
+                +{achievement.xp_reward} XP
               </span>
             </div>
 
-            {/* Progress toward achievement */}
-            {!achievement.earned &&
-              achievement.progressCurrent !== undefined &&
-              achievement.progressTotal !== undefined && (
-                <div className="w-full space-y-1">
-                  <Progress
-                    value={
-                      (achievement.progressCurrent /
-                        achievement.progressTotal) *
-                      100
-                    }
-                    className="h-1.5 bg-muted [&>[data-slot=progress-indicator]]:bg-cai-blue"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    {achievement.progressCurrent} /{' '}
-                    {achievement.progressTotal}
-                  </p>
-                </div>
-              )}
-
             {/* Earned date */}
-            {achievement.earned && achievement.earnedAt && (
+            {earned && achievement.earned_at && (
               <p className="text-[10px] text-muted-foreground">
                 Earned{' '}
-                {new Date(achievement.earnedAt).toLocaleDateString('en-US', {
+                {new Date(achievement.earned_at).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                   year: 'numeric',
@@ -481,18 +203,68 @@ function AchievementCard({
 
 export default function AchievementsPage() {
   const [activeTab, setActiveTab] = useState<AchievementCategory>('all')
+  const [achievements, setAchievements] = useState<Achievement[]>([])
+  const [stats, setStats] = useState({
+    totalXP: 0,
+    level: 0,
+    earnedCount: 0,
+    totalCount: 0,
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.email) {
+        setLoading(false)
+        return
+      }
+
+      try {
+        const res = await fetch(
+          `/api/achievements?user_email=${encodeURIComponent(user.email)}`
+        )
+        if (!res.ok) {
+          setLoading(false)
+          return
+        }
+        const data = await res.json()
+
+        setAchievements(data.achievements ?? [])
+        setStats({
+          totalXP: data.total_xp ?? 0,
+          level: data.level ?? 0,
+          earnedCount: data.earned_count ?? 0,
+          totalCount: data.total_count ?? 0,
+        })
+      } catch {
+        // silently fail — page shows empty state
+      }
+      setLoading(false)
+    }
+    load()
+  }, [])
 
   const filteredAchievements =
     activeTab === 'all'
-      ? mockAchievements
-      : mockAchievements.filter((a) => a.category === activeTab)
+      ? achievements
+      : achievements.filter((a) => a.category === activeTab)
 
-  const nextLevelXP = (mockUserStats.level + 1) * 1000
-  const currentLevelXP = mockUserStats.level * 1000
+  const nextLevelXP = (stats.level + 1) * 1000
+  const currentLevelXP = stats.level * 1000
   const levelProgress =
-    ((mockUserStats.totalXP - currentLevelXP) /
-      (nextLevelXP - currentLevelXP)) *
-    100
+    nextLevelXP > currentLevelXP
+      ? ((stats.totalXP - currentLevelXP) / (nextLevelXP - currentLevelXP)) * 100
+      : 0
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -516,17 +288,19 @@ export default function AchievementsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold">
-                      Level <AnimatedCounter value={mockUserStats.level} />
+                      Level <AnimatedCounter value={stats.level} />
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      <AnimatedCounter value={mockUserStats.totalXP} /> XP
+                      <AnimatedCounter value={stats.totalXP} /> XP
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Next Level</p>
                   <p className="text-sm font-medium">
-                    {mockUserStats.xpToNextLevel} XP to go
+                    {nextLevelXP - stats.totalXP > 0
+                      ? `${nextLevelXP - stats.totalXP} XP to go`
+                      : 'Max!'}
                   </p>
                 </div>
               </div>
@@ -546,25 +320,26 @@ export default function AchievementsPage() {
             <CheckCircle2 className="size-4 text-cai-emerald" />
             <span className="text-sm">
               <span className="font-semibold">
-                <AnimatedCounter value={mockUserStats.totalEarned} />
+                <AnimatedCounter value={stats.earnedCount} />
               </span>{' '}
-              / {mockUserStats.totalAvailable} earned
+              / {stats.totalCount} earned
             </span>
           </div>
           <div className="h-4 w-px bg-border" />
           <div className="flex-1">
             <Progress
               value={
-                (mockUserStats.totalEarned / mockUserStats.totalAvailable) *
-                100
+                stats.totalCount > 0
+                  ? (stats.earnedCount / stats.totalCount) * 100
+                  : 0
               }
               className="h-1.5 bg-cai-emerald/20 [&>[data-slot=progress-indicator]]:bg-cai-emerald"
             />
           </div>
           <span className="text-sm font-medium text-muted-foreground">
-            {Math.round(
-              (mockUserStats.totalEarned / mockUserStats.totalAvailable) * 100
-            )}
+            {stats.totalCount > 0
+              ? Math.round((stats.earnedCount / stats.totalCount) * 100)
+              : 0}
             %
           </span>
         </div>
